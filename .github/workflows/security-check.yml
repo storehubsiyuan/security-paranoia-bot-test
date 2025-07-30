@@ -1,0 +1,63 @@
+name: Security Paranoia Bot Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  security-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+      
+      - name: Install Security Paranoia Bot
+        run: |
+          npm install -g security-paranoia-bot@latest
+      
+      - name: Run Security Analysis
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # AI Configuration (Optional - enhances vulnerability detection)
+          ENABLE_AI_ANALYSIS: ${{ secrets.GEMINI_API_KEY != '' && 'true' || 'false' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: 'gemini-2.5-pro'  # Can fallback to gemini-2.0-flash if overloaded
+          # Security Analysis Configuration
+          MAX_COMMENTS_PER_PR: 25
+          CONFIDENCE_THRESHOLD: 70
+        run: |
+          security-paranoia-bot action \
+            --repo ${{ github.repository }} \
+            --pr ${{ github.event.pull_request.number }} \
+            --verbose
+      
+      - name: Upload Security Report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-report
+          path: security-report.json
+          retention-days: 30
